@@ -5,6 +5,7 @@ This guide explains how to deploy the Poveon application to Netlify.
 ## Prerequisites
 
 - A [Netlify account](https://app.netlify.com/signup) (free tier available)
+- A [Supabase account](https://supabase.com) with a configured project (see [SUPABASE_SETUP.md](SUPABASE_SETUP.md))
 - A [Gemini API key](https://aistudio.google.com/app/apikey)
 - This repository pushed to GitHub, GitLab, or Bitbucket
 
@@ -26,10 +27,12 @@ This guide explains how to deploy the Poveon application to Netlify.
 
 3. **Set environment variables:**
    - Go to Site settings > Environment variables
-   - Add the following variable:
-     - **Key:** `GEMINI_API_KEY`
-     - **Value:** Your Gemini API key (get it from [Google AI Studio](https://aistudio.google.com/app/apikey))
-   - Note: The app is configured to use `GEMINI_API_KEY` (without the `VITE_` prefix). The Vite config handles making this available to the application.
+   - Add the following variables:
+     - **Key:** `GEMINI_API_KEY` | **Value:** Your Gemini API key ([Get key](https://aistudio.google.com/app/apikey))
+     - **Key:** `SUPABASE_URL` | **Value:** Your Supabase project URL
+     - **Key:** `SUPABASE_ANON_KEY` | **Value:** Your Supabase anon/public key
+   - Get Supabase credentials from: Project Settings > API in your Supabase dashboard
+   - Note: The Vite config makes these variables available to the application
 
 4. **Redeploy if needed:**
    - After adding environment variables, trigger a new deploy from the Deploys tab
@@ -55,7 +58,9 @@ This guide explains how to deploy the Poveon application to Netlify.
 
 4. **Set environment variables:**
    ```bash
-   netlify env:set GEMINI_API_KEY "your-api-key-here"
+   netlify env:set GEMINI_API_KEY "your-gemini-api-key"
+   netlify env:set SUPABASE_URL "your-supabase-url"
+   netlify env:set SUPABASE_ANON_KEY "your-supabase-anon-key"
    ```
 
 5. **Deploy:**
@@ -86,13 +91,15 @@ The `netlify.toml` file in the repository root contains:
 
 ## Environment Variables
 
-This app requires the following environment variable:
+This app requires the following environment variables:
 
 | Variable | Description | Where to get it |
 |----------|-------------|-----------------|
-| `GEMINI_API_KEY` | API key for Google Gemini | [Get API key](https://aistudio.google.com/app/apikey) |
+| `GEMINI_API_KEY` | API key for Google Gemini AI | [Get API key](https://aistudio.google.com/app/apikey) |
+| `SUPABASE_URL` | Your Supabase project URL | Supabase Dashboard > Settings > API |
+| `SUPABASE_ANON_KEY` | Your Supabase anonymous/public key | Supabase Dashboard > Settings > API |
 
-**Note:** This app is configured to use `GEMINI_API_KEY` directly (no `VITE_` prefix needed). The Vite configuration (`vite.config.ts`) uses the `define` option to make this environment variable available to the application.
+**Note:** These variables don't need a `VITE_` prefix. The Vite configuration (`vite.config.ts`) uses the `define` option to make them available to the application.
 
 ## Troubleshooting
 
