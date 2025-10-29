@@ -52,11 +52,11 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, onLogin, onRegister, on
             <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-slate-200">
                 <div className="container mx-auto px-4">
                     <div className="flex justify-between items-center h-16">
-                        <div 
+                        <div
                             className="text-2xl font-bold text-slate-900 cursor-pointer"
                             onClick={() => setFilter('ALL')}
                         >
-                            QuickPost
+                            Poveon
                         </div>
                         
                         {/* --- Desktop Navigation --- */}

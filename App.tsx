@@ -17,8 +17,8 @@ import SortControl from './components/SortControl';
 import ProfileModal from './components/ProfileModal';
 
 const App: React.FC = () => {
-    const [user, setUser] = useLocalStorage<User | null>('quickpost-user', null);
-    const [requests, setRequests] = useLocalStorage<Request[]>('quickpost-requests', MOCK_REQUESTS);
+    const [user, setUser] = useLocalStorage<User | null>('poveon-user', null);
+    const [requests, setRequests] = useLocalStorage<Request[]>('poveon-requests', MOCK_REQUESTS);
     const [filter, setFilter] = useState<FilterType>('ALL');
     const [sortBy, setSortBy] = useState<SortType>('NEWEST');
     const [currentModal, setCurrentModal] = useState<ModalType>(null);
@@ -28,7 +28,7 @@ const App: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const [unlockedRequestIds, setUnlockedRequestIds] = useLocalStorage<string[]>('quickpost-unlocked-ids', []);
+    const [unlockedRequestIds, setUnlockedRequestIds] = useLocalStorage<string[]>('poveon-unlocked-ids', []);
     const [pendingUnlockRequest, setPendingUnlockRequest] = useState<Request | null>(null);
     const [viewingRequest, setViewingRequest] = useState<Request | null>(null);
     
