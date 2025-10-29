@@ -1,0 +1,17 @@
+# Netlify configuration for Vite + React app
+
+[build]
+  # Directory where build output is placed
+  publish = "dist"
+
+  # Build command
+  command = "npm run build"
+
+# Redirect all requests to index.html for client-side routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Environment variables (configure in Netlify UI)
+# GEMINI_API_KEY should be set in Netlify dashboard under Site settings > Environment variables
