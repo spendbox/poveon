@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User, AuthAction, VerificationStatus } from '../types';
+import { authService, userService } from '../services/supabase.service';
 
 interface AuthModalProps {
     isOpen: boolean;
@@ -14,38 +15,113 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuccess, i
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [successMessage, setSuccessMessage] = useState('');
 
     if (!isOpen) return null;
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setSuccessMessage('');
+        setIsLoading(true);
 
-        if (action === 'REGISTER' && !name) {
-            setError('Name is required for registration.');
-            return;
+        try {
+            if (action === 'REGISTER') {
+                // Validate registration fields
+                if (!name || name.trim().length < 2) {
+                    setError('Name must be at least 2 characters long.');
+                    setIsLoading(false);
+                    return;
+                }
+
+                if (!email || !password) {
+                    setError('Email and password are required.');
+                    setIsLoading(false);
+                    return;
+                }
+
+                if (password.length < 6) {
+                    setError('Password must be at least 6 characters long.');
+                    setIsLoading(false);
+                    return;
+                }
+
+                // Register with Supabase
+                await authService.signUp(email, password, name);
+
+                setSuccessMessage('Registration successful! Please check your email to verify your account before logging in.');
+                setIsLoading(false);
+
+                // Clear form
+                setName('');
+                setEmail('');
+                setPassword('');
+
+                // Switch to login after 3 seconds
+                setTimeout(() => {
+                    setAction('LOGIN');
+                    setSuccessMessage('');
+                }, 3000);
+
+            } else {
+                // Login
+                if (!email || !password) {
+                    setError('Email and password are required.');
+                    setIsLoading(false);
+                    return;
+                }
+
+                const { session, user: authUser } = await authService.signIn(email, password);
+
+                if (!session || !authUser) {
+                    setError('Login failed. Please check your credentials.');
+                    setIsLoading(false);
+                    return;
+                }
+
+                // Check if email is verified
+                if (!authUser.email_confirmed_at) {
+                    setError('Please verify your email before logging in. Check your inbox for the verification link.');
+                    await authService.signOut();
+                    setIsLoading(false);
+                    return;
+                }
+
+                // Get user profile from database
+                const userProfile = await userService.getUserProfile(authUser.id);
+
+                if (!userProfile) {
+                    setError('User profile not found. Please contact support.');
+                    setIsLoading(false);
+                    return;
+                }
+
+                onAuthSuccess(userProfile);
+                setIsLoading(false);
+            }
+        } catch (err: any) {
+            console.error('Auth error:', err);
+
+            // Handle specific Supabase error messages
+            if (err.message?.includes('Invalid login credentials')) {
+                setError('Invalid email or password. Please try again.');
+            } else if (err.message?.includes('already registered')) {
+                setError('This email is already registered. Please log in instead.');
+            } else if (err.message?.includes('Email not confirmed')) {
+                setError('Please verify your email before logging in.');
+            } else {
+                setError(err.message || 'An error occurred. Please try again.');
+            }
+
+            setIsLoading(false);
         }
-
-        if (!email || !password) {
-            setError('Email and password are required.');
-            return;
-        }
-
-        // Mock authentication logic
-        const mockUser: User = {
-            id: `user-${Date.now()}`,
-            name: action === 'REGISTER' ? name : 'Mock User',
-            email: email,
-            walletBalance: action === 'REGISTER' ? 1000 : 5000,
-            verificationStatus: 'NOT_VERIFIED',
-        };
-        
-        onAuthSuccess(mockUser);
     };
 
     const toggleAction = () => {
         setAction(prev => prev === 'LOGIN' ? 'REGISTER' : 'LOGIN');
         setError('');
+        setSuccessMessage('');
     }
 
     return (
@@ -75,9 +151,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuccess, i
                     </div>
 
                     {error && <p className="text-red-500 text-sm">{error}</p>}
+                    {successMessage && <p className="text-green-600 text-sm">{successMessage}</p>}
 
-                    <button type="submit" className="w-full py-3 mt-4 text-white bg-slate-800 rounded-md font-semibold hover:bg-slate-900 transition-colors">
-                        {action === 'LOGIN' ? 'Log In' : 'Register'}
+                    <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="w-full py-3 mt-4 text-white bg-slate-800 rounded-md font-semibold hover:bg-slate-900 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed"
+                    >
+                        {isLoading ? 'Please wait...' : (action === 'LOGIN' ? 'Log In' : 'Register')}
                     </button>
                 </form>
 

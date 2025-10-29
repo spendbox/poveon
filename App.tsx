@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GoogleGenAI, Type } from "@google/genai";
-import { User, Request, UrgencyLevel, ModalType, FilterType, AuthAction, Toast, SortType, VerificationStatus } from './types';
-import { URGENCY_OPTIONS, MOCK_REQUESTS } from './constants';
+import { User, Request, UrgencyLevel, ModalType, FilterType, AuthAction, Toast, SortType } from './types';
+import { URGENCY_OPTIONS } from './constants';
 import Header from './components/Header';
 import RequestInput from './components/RequestInput';
 import Filter from './components/Filter';
@@ -12,28 +12,109 @@ import WalletModal from './components/WalletModal';
 import ViewRequestModal from './components/ViewRequestModal';
 import ConfirmationModal from './components/ConfirmationModal';
 import ToastContainer from './components/ToastContainer';
-import useLocalStorage from './hooks/useLocalStorage';
 import SortControl from './components/SortControl';
 import ProfileModal from './components/ProfileModal';
+import { authService, userService, requestService, applicationService, transactionService, realtimeService } from './services/supabase.service';
 
 const App: React.FC = () => {
-    const [user, setUser] = useLocalStorage<User | null>('poveon-user', null);
-    const [requests, setRequests] = useLocalStorage<Request[]>('poveon-requests', MOCK_REQUESTS);
+    const [user, setUser] = useState<User | null>(null);
+    const [requests, setRequests] = useState<Request[]>([]);
     const [filter, setFilter] = useState<FilterType>('ALL');
     const [sortBy, setSortBy] = useState<SortType>('NEWEST');
     const [currentModal, setCurrentModal] = useState<ModalType>(null);
     const [authAction, setAuthAction] = useState<AuthAction>('REGISTER');
-    
+
     const [activeRequest, setActiveRequest] = useState<Partial<Request> | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [isLoadingRequests, setIsLoadingRequests] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const [unlockedRequestIds, setUnlockedRequestIds] = useLocalStorage<string[]>('poveon-unlocked-ids', []);
+    const [unlockedRequestIds, setUnlockedRequestIds] = useState<string[]>([]);
     const [pendingUnlockRequest, setPendingUnlockRequest] = useState<Request | null>(null);
     const [viewingRequest, setViewingRequest] = useState<Request | null>(null);
-    
+
     const [toasts, setToasts] = useState<Toast[]>([]);
     const [confirmation, setConfirmation] = useState<{ title: string; message: string; onConfirm: () => void; } | null>(null);
+
+    // --- Initialize Auth State and Load Data ---
+    useEffect(() => {
+        // Check for existing session
+        const initializeAuth = async () => {
+            try {
+                const session = await authService.getSession();
+                if (session?.user) {
+                    // User is logged in, load their profile
+                    const profile = await userService.getUserProfile(session.user.id);
+                    if (profile) {
+                        setUser(profile);
+                    }
+                }
+            } catch (error) {
+                console.error('Error initializing auth:', error);
+            }
+        };
+
+        initializeAuth();
+
+        // Listen to auth changes (for persistent sessions)
+        const { data: authListener } = authService.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_IN' && session?.user) {
+                const profile = await userService.getUserProfile(session.user.id);
+                if (profile) {
+                    setUser(profile);
+                }
+            } else if (event === 'SIGNED_OUT') {
+                setUser(null);
+            }
+        });
+
+        return () => {
+            authListener?.subscription?.unsubscribe();
+        };
+    }, []);
+
+    // --- Load Requests from Supabase ---
+    useEffect(() => {
+        const loadRequests = async () => {
+            try {
+                setIsLoadingRequests(true);
+                const allRequests = await requestService.getAllRequests();
+                setRequests(allRequests);
+            } catch (error) {
+                console.error('Error loading requests:', error);
+                showToast('Failed to load requests.', 'error');
+            } finally {
+                setIsLoadingRequests(false);
+            }
+        };
+
+        loadRequests();
+
+        // Subscribe to real-time updates
+        const channel = realtimeService.subscribeToRequests(async (payload) => {
+            console.log('Real-time update:', payload);
+            // Reload requests when there's a change
+            const allRequests = await requestService.getAllRequests();
+            setRequests(allRequests);
+        });
+
+        return () => {
+            realtimeService.unsubscribe(channel);
+        };
+    }, []);
+
+    // --- Refresh user data when needed ---
+    const refreshUser = async () => {
+        if (!user) return;
+        try {
+            const updatedProfile = await userService.getUserProfile(user.id);
+            if (updatedProfile) {
+                setUser(updatedProfile);
+            }
+        } catch (error) {
+            console.error('Error refreshing user:', error);
+        }
+    };
 
     // --- Toast and Confirmation Helpers ---
     const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -41,21 +122,29 @@ const App: React.FC = () => {
         setToasts(prev => [...prev, { id, message, type }]);
         setTimeout(() => removeToast(id), 5000);
     };
+
     const removeToast = (id: number) => {
         setToasts(prev => prev.filter(toast => toast.id !== id));
     };
 
     // --- Auth Handlers ---
-    const handleLogout = () => {
-        setUser(null);
-        setFilter('ALL'); // Reset filter on logout
-        showToast('You have been logged out.');
+    const handleLogout = async () => {
+        try {
+            await authService.signOut();
+            setUser(null);
+            setFilter('ALL');
+            showToast('You have been logged out.');
+        } catch (error) {
+            console.error('Logout error:', error);
+            showToast('Error logging out.', 'error');
+        }
     };
 
     const handleAuthSuccess = (loggedInUser: User) => {
         setUser(loggedInUser);
         setCurrentModal(null);
         showToast(`Welcome, ${loggedInUser.name}!`, 'success');
+
         if (activeRequest) {
             setCurrentModal('REQUEST');
         }
@@ -64,13 +153,15 @@ const App: React.FC = () => {
             setPendingUnlockRequest(null);
         }
     };
-    
+
     // --- AI and Request Logic ---
     const generateRequestDetails = useCallback(async (prompt: string) => {
         setIsLoading(true);
         setError(null);
         try {
-            if (!process.env.API_KEY) { throw new Error("API key is missing."); }
+            if (!process.env.API_KEY) {
+                throw new Error("API key is missing.");
+            }
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash",
@@ -100,13 +191,13 @@ const App: React.FC = () => {
         }
     }, []);
 
-    const handlePostRequest = (requestToPost: Partial<Request>) => {
+    const handlePostRequest = async (requestToPost: Partial<Request>) => {
         if (!user) {
             setAuthAction('REGISTER');
             setCurrentModal('AUTH');
             return;
         }
-        
+
         const urgencyOption = URGENCY_OPTIONS.find(opt => opt.level === requestToPost.urgency);
         const cost = urgencyOption ? urgencyOption.cost : 0;
         const isUpdate = !!requestToPost.id;
@@ -117,27 +208,47 @@ const App: React.FC = () => {
             const originalCost = URGENCY_OPTIONS.find(opt => opt.level === originalRequest?.urgency)?.cost || 0;
             costToCharge = cost - originalCost;
         }
-        
-        const performPost = () => {
-             if (isUpdate) {
-                setRequests(prev => prev.map(r => r.id === requestToPost.id ? { ...r, ...requestToPost } as Request : r));
-                showToast('Request updated successfully!', 'success');
-            } else {
-                const newRequest: Request = {
-                    id: Date.now().toString(),
-                    userId: user.id,
-                    userName: user.name,
-                    userVerification: user.verificationStatus,
-                    createdAt: new Date().toISOString(),
-                    applicants: [],
-                    ...requestToPost,
-                    urgency: requestToPost.urgency || UrgencyLevel.GENERAL,
-                } as Request;
-                setRequests(prev => [newRequest, ...prev]);
-                showToast('Request posted successfully!', 'success');
+
+        const performPost = async () => {
+            try {
+                if (isUpdate) {
+                    // Update existing request
+                    await requestService.updateRequest(requestToPost.id!, {
+                        title: requestToPost.title!,
+                        description: requestToPost.description!,
+                        category: requestToPost.category!,
+                        budget: requestToPost.budget!,
+                        urgency: requestToPost.urgency!,
+                        whatsapp: requestToPost.whatsapp,
+                        email: requestToPost.email,
+                    });
+                    showToast('Request updated successfully!', 'success');
+                } else {
+                    // Create new request
+                    await requestService.createRequest({
+                        userId: user.id,
+                        title: requestToPost.title!,
+                        description: requestToPost.description!,
+                        category: requestToPost.category!,
+                        budget: requestToPost.budget!,
+                        urgency: requestToPost.urgency || UrgencyLevel.GENERAL,
+                        rawInput: requestToPost.rawInput,
+                        whatsapp: requestToPost.whatsapp,
+                        email: requestToPost.email,
+                    });
+                    showToast('Request posted successfully!', 'success');
+                }
+
+                // Reload requests
+                const allRequests = await requestService.getAllRequests();
+                setRequests(allRequests);
+
+                setCurrentModal(null);
+                setActiveRequest(null);
+            } catch (error) {
+                console.error('Error posting request:', error);
+                showToast('Failed to post request. Please try again.', 'error');
             }
-            setCurrentModal(null);
-            setActiveRequest(null);
         };
 
         if (costToCharge > 0) {
@@ -149,16 +260,29 @@ const App: React.FC = () => {
             setConfirmation({
                 title: 'Confirm Payment',
                 message: `This action will deduct N${costToCharge.toLocaleString()} from your wallet. Proceed?`,
-                onConfirm: () => {
-                    setUser(prevUser => prevUser ? { ...prevUser, walletBalance: prevUser.walletBalance - costToCharge } : null);
-                    performPost();
+                onConfirm: async () => {
+                    try {
+                        // Deduct funds and create transaction
+                        await transactionService.deductFunds(
+                            user.id,
+                            costToCharge,
+                            `Post request with ${urgencyOption?.label} urgency`
+                        );
+                        // Refresh user to get updated balance
+                        await refreshUser();
+                        // Post the request
+                        await performPost();
+                    } catch (error) {
+                        console.error('Payment error:', error);
+                        showToast('Payment failed. Please try again.', 'error');
+                    }
                 }
             });
         } else {
-            performPost();
+            await performPost();
         }
     };
-    
+
     const handleEditRequest = (request: Request) => {
         setActiveRequest(request);
         setCurrentModal('REQUEST');
@@ -168,9 +292,17 @@ const App: React.FC = () => {
         setConfirmation({
             title: 'Delete Request',
             message: 'Are you sure you want to permanently delete this request?',
-            onConfirm: () => {
-                setRequests(prev => prev.filter(r => r.id !== requestId));
-                showToast('Request deleted.', 'success');
+            onConfirm: async () => {
+                try {
+                    await requestService.deleteRequest(requestId);
+                    // Reload requests
+                    const allRequests = await requestService.getAllRequests();
+                    setRequests(allRequests);
+                    showToast('Request deleted.', 'success');
+                } catch (error) {
+                    console.error('Error deleting request:', error);
+                    showToast('Failed to delete request.', 'error');
+                }
             }
         });
     };
@@ -180,11 +312,12 @@ const App: React.FC = () => {
             title: 'Report Request',
             message: 'Are you sure you want to report this request for review?',
             onConfirm: () => {
+                // TODO: Implement report functionality in backend
                 showToast('Thank you for your report. We will review this post shortly.', 'success');
             }
         });
     };
-    
+
     // --- Modal Openers ---
     const openLogin = () => { setAuthAction('LOGIN'); setCurrentModal('AUTH'); };
     const openRegister = () => { setAuthAction('REGISTER'); setCurrentModal('AUTH'); };
@@ -192,52 +325,68 @@ const App: React.FC = () => {
     const openProfile = () => setCurrentModal('PROFILE');
 
     // --- Profile Management ---
-    const handleUpdateProfile = (updatedDetails: Partial<User>) => {
+    const handleUpdateProfile = async (updatedDetails: Partial<User>) => {
         if (!user) return;
-        const updatedUser = { ...user, ...updatedDetails };
-        setUser(updatedUser);
 
-        setRequests(prevRequests => 
-            prevRequests.map(req => {
-                const newReq = req.userId === user.id ? { ...req, userName: updatedUser.name } : { ...req };
-                const newApplicants = newReq.applicants.map(app => 
-                    app.userId === user.id ? { ...app, userName: updatedUser.name } : app
-                );
-                return { ...newReq, applicants: newApplicants };
-            })
-        );
-        setCurrentModal(null);
-        showToast('Profile updated successfully!', 'success');
-    };
-
-    const handleStartVerification = () => {
-        if (!user) return;
-        setUser({ ...user, verificationStatus: 'PENDING' });
-        showToast('Verification process started. This will take a moment.', 'info');
-
-        setTimeout(() => {
-            setUser(prevUser => {
-                if (!prevUser) return null;
-                const updatedUser = { ...prevUser, verificationStatus: 'VERIFIED' as VerificationStatus };
-                
-                // Update verification status on existing posts
-                setRequests(prevReqs => prevReqs.map(req => 
-                    req.userId === updatedUser.id ? { ...req, userVerification: 'VERIFIED' } : req
-                ));
-
-                showToast('Your identity has been successfully verified!', 'success');
-                return updatedUser;
+        try {
+            await userService.updateUserProfile(user.id, {
+                name: updatedDetails.name,
             });
-        }, 3000);
+
+            // Refresh user profile
+            await refreshUser();
+
+            // Reload requests to show updated user names
+            const allRequests = await requestService.getAllRequests();
+            setRequests(allRequests);
+
+            setCurrentModal(null);
+            showToast('Profile updated successfully!', 'success');
+        } catch (error) {
+            console.error('Error updating profile:', error);
+            showToast('Failed to update profile.', 'error');
+        }
     };
 
+    const handleStartVerification = async () => {
+        if (!user) return;
+
+        try {
+            await userService.startVerification(user.id);
+            showToast('Verification process started. This will take a moment.', 'info');
+
+            // Simulate verification process (in production, this would be manual review)
+            setTimeout(async () => {
+                try {
+                    await userService.completeVerification(user.id);
+                    await refreshUser();
+                    showToast('Your identity has been successfully verified!', 'success');
+
+                    // Reload requests to show updated verification status
+                    const allRequests = await requestService.getAllRequests();
+                    setRequests(allRequests);
+                } catch (error) {
+                    console.error('Error completing verification:', error);
+                }
+            }, 3000);
+        } catch (error) {
+            console.error('Error starting verification:', error);
+            showToast('Failed to start verification.', 'error');
+        }
+    };
 
     // --- Wallet and Payment Handlers ---
-    const handleAddFunds = (amount: number) => {
-        if (user) {
-            setUser({ ...user, walletBalance: user.walletBalance + amount });
+    const handleAddFunds = async (amount: number) => {
+        if (!user) return;
+
+        try {
+            await transactionService.addFunds(user.id, amount, `WALLET_TOPUP_${Date.now()}`);
+            await refreshUser();
             showToast(`Successfully added N${amount.toLocaleString()} to your wallet.`, 'success');
             setCurrentModal(null);
+        } catch (error) {
+            console.error('Error adding funds:', error);
+            showToast('Failed to add funds. Please try again.', 'error');
         }
     };
 
@@ -249,21 +398,31 @@ const App: React.FC = () => {
         }
 
         const cost = Math.min(requestToUnlock.budget * 0.001, 250000);
-        
+
         if (user.walletBalance < cost) {
             showToast(`You need N${cost.toFixed(2)} to view this. Please add funds.`, 'error');
             openWallet();
             return;
         }
-        
+
         setConfirmation({
             title: 'Unlock Details',
             message: `This will deduct N${cost.toFixed(2)} from your wallet. Proceed?`,
-            onConfirm: () => {
-                setUser({ ...user, walletBalance: user.walletBalance - cost });
-                setUnlockedRequestIds(prev => [...new Set([...prev, requestToUnlock.id])]);
-                setViewingRequest(requestToUnlock);
-                showToast('Details unlocked!', 'success');
+            onConfirm: async () => {
+                try {
+                    await transactionService.deductFunds(
+                        user.id,
+                        cost,
+                        `Unlock request: ${requestToUnlock.title}`
+                    );
+                    await refreshUser();
+                    setUnlockedRequestIds(prev => [...new Set([...prev, requestToUnlock.id])]);
+                    setViewingRequest(requestToUnlock);
+                    showToast('Details unlocked!', 'success');
+                } catch (error) {
+                    console.error('Error unlocking request:', error);
+                    showToast('Failed to unlock request.', 'error');
+                }
             }
         });
     };
@@ -272,51 +431,44 @@ const App: React.FC = () => {
         setViewingRequest(request);
     };
 
-    const handleApplyToRequest = (requestId: string) => {
+    const handleApplyToRequest = async (requestId: string) => {
         if (!user) {
             showToast('Please log in to apply for a request.', 'info');
             openLogin();
             return;
         }
-        
-        setRequests(prevRequests => {
-            const newRequests = [...prevRequests];
-            const requestIndex = newRequests.findIndex(r => r.id === requestId);
-            if (requestIndex === -1) return prevRequests;
 
-            const request = newRequests[requestIndex];
-            const hasApplied = request.applicants.some(app => app.userId === user.id);
+        try {
+            // Check if already applied
+            const hasApplied = await applicationService.hasUserApplied(requestId, user.id);
 
             if (hasApplied) {
                 showToast("You have already applied to this request.", 'info');
-                return prevRequests;
+                return;
             }
 
-            const newApplicant = {
-                userId: user.id,
-                userName: user.name,
-                appliedAt: new Date().toISOString()
-            };
+            // Apply to request
+            await applicationService.applyToRequest(requestId, user.id);
 
-            newRequests[requestIndex] = {
-                ...request,
-                applicants: [...request.applicants, newApplicant]
-            };
-            
+            // Reload requests to show updated applicants
+            const allRequests = await requestService.getAllRequests();
+            setRequests(allRequests);
+
             showToast("Your application has been sent!", 'success');
-            return newRequests;
-        });
+        } catch (error) {
+            console.error('Error applying to request:', error);
+            showToast('Failed to apply to request.', 'error');
+        }
     };
-
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
-            <Header 
-                user={user} 
-                onLogout={handleLogout} 
-                onLogin={openLogin} 
-                onRegister={openRegister} 
-                onOpenWallet={openWallet} 
+            <Header
+                user={user}
+                onLogout={handleLogout}
+                onLogin={openLogin}
+                onRegister={openRegister}
+                onOpenWallet={openWallet}
                 onOpenProfile={openProfile}
                 currentFilter={filter}
                 setFilter={setFilter}
@@ -340,19 +492,26 @@ const App: React.FC = () => {
                             <Filter currentFilter={filter} setFilter={setFilter} />
                         </div>
                     </div>
-                    <RequestList 
-                        requests={requests} 
-                        filter={filter} 
-                        sortBy={sortBy}
-                        currentUser={user}
-                        unlockedRequestIds={unlockedRequestIds}
-                        onEdit={handleEditRequest}
-                        onDelete={handleDeleteRequest}
-                        onUnlock={handleUnlockRequest}
-                        onViewDetails={handleViewDetails}
-                        onApply={handleApplyToRequest}
-                        onReport={handleReportRequest}
-                    />
+
+                    {isLoadingRequests ? (
+                        <div className="text-center py-12">
+                            <p className="text-slate-600">Loading requests...</p>
+                        </div>
+                    ) : (
+                        <RequestList
+                            requests={requests}
+                            filter={filter}
+                            sortBy={sortBy}
+                            currentUser={user}
+                            unlockedRequestIds={unlockedRequestIds}
+                            onEdit={handleEditRequest}
+                            onDelete={handleDeleteRequest}
+                            onUnlock={handleUnlockRequest}
+                            onViewDetails={handleViewDetails}
+                            onApply={handleApplyToRequest}
+                            onReport={handleReportRequest}
+                        />
+                    )}
                 </div>
             </main>
 
@@ -365,7 +524,7 @@ const App: React.FC = () => {
                     urgencyOptions={URGENCY_OPTIONS}
                 />
             )}
-            
+
             {currentModal === 'AUTH' && (
                 <AuthModal
                     isOpen={true}
@@ -376,7 +535,7 @@ const App: React.FC = () => {
             )}
 
             {currentModal === 'WALLET' && user && (
-                <WalletModal 
+                <WalletModal
                     isOpen={true}
                     onClose={() => setCurrentModal(null)}
                     onAddFunds={handleAddFunds}
@@ -385,7 +544,7 @@ const App: React.FC = () => {
             )}
 
              {currentModal === 'PROFILE' && user && (
-                <ProfileModal 
+                <ProfileModal
                     isOpen={true}
                     onClose={() => setCurrentModal(null)}
                     onSave={handleUpdateProfile}
@@ -394,13 +553,13 @@ const App: React.FC = () => {
                 />
             )}
 
-            <ViewRequestModal 
+            <ViewRequestModal
                 isOpen={!!viewingRequest}
                 onClose={() => setViewingRequest(null)}
                 request={viewingRequest}
             />
 
-            <ConfirmationModal 
+            <ConfirmationModal
                 isOpen={!!confirmation}
                 onClose={() => setConfirmation(null)}
                 title={confirmation?.title || ''}
