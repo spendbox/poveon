@@ -1,5 +1,5 @@
 {
-  "name": "QuickPost - AI-Powered Request Board",
+  "name": "Poveon - AI-Powered Request Board",
   "description": "A minimalistic platform where users can post requests for products or services. An AI assistant helps draft the request details, and users can pay to mark their requests as urgent or view other requests.",
   "requestFramePermissions": []
 }

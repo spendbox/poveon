@@ -1,6 +1,6 @@
 # Deployment Guide - Netlify
 
-This guide explains how to deploy the QuickPost application to Netlify.
+This guide explains how to deploy the Poveon application to Netlify.
 
 ## Prerequisites
 
