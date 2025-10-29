@@ -28,12 +28,12 @@ This guide explains how to deploy the Poveon application to Netlify.
    - Go to Site settings > Environment variables
    - Add the following variable:
      - **Key:** `GEMINI_API_KEY`
-     - **Value:** Your Gemini API key
-   - Important: For Vite to access environment variables in the browser, they must be prefixed with `VITE_`
-   - You may need to update your code to use `VITE_GEMINI_API_KEY` instead
+     - **Value:** Your Gemini API key (get it from [Google AI Studio](https://aistudio.google.com/app/apikey))
+   - Note: The app is configured to use `GEMINI_API_KEY` (without the `VITE_` prefix). The Vite config handles making this available to the application.
 
 4. **Redeploy if needed:**
    - After adding environment variables, trigger a new deploy from the Deploys tab
+   - Click "Trigger deploy" > "Deploy site"
 
 ### Method 2: Deploy via Netlify CLI
 
@@ -92,7 +92,7 @@ This app requires the following environment variable:
 |----------|-------------|-----------------|
 | `GEMINI_API_KEY` | API key for Google Gemini | [Get API key](https://aistudio.google.com/app/apikey) |
 
-**Note:** If your Vite app uses environment variables, they must be prefixed with `VITE_` to be exposed to the client-side code. Update your code accordingly if needed.
+**Note:** This app is configured to use `GEMINI_API_KEY` directly (no `VITE_` prefix needed). The Vite configuration (`vite.config.ts`) uses the `define` option to make this environment variable available to the application.
 
 ## Troubleshooting
 
@@ -104,9 +104,10 @@ This app requires the following environment variable:
 
 ### Environment Variables Not Working
 
-- Make sure you've set them in Netlify dashboard (Site settings > Environment variables)
-- For Vite apps, client-side variables must be prefixed with `VITE_`
-- Redeploy after adding/changing environment variables
+- Make sure you've set `GEMINI_API_KEY` in Netlify dashboard (Site settings > Environment variables)
+- Ensure the variable name is exactly `GEMINI_API_KEY` (case-sensitive)
+- After adding or changing environment variables, you must trigger a new deploy
+- Check the build logs for any errors related to the API key
 
 ### 404 Errors on Page Refresh
 
@@ -115,9 +116,10 @@ This app requires the following environment variable:
 
 ### API Key Issues
 
-- Ensure `GEMINI_API_KEY` (or `VITE_GEMINI_API_KEY`) is set in Netlify
+- Ensure `GEMINI_API_KEY` is set in Netlify environment variables
 - Check that your API key is valid and has not expired
 - Verify API key usage limits haven't been exceeded
+- Test your API key locally first using `.env.local` before deploying
 
 ## Custom Domain (Optional)
 

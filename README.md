@@ -12,12 +12,37 @@ View your app in AI Studio: https://ai.studio/apps/drive/17Yrej1o5YheVSmrpakvASM
 
 **Prerequisites:**  Node.js
 
+### Setup Steps:
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Configure Gemini API Key:**
+
+   a. Get your API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+
+   b. Create a `.env.local` file in the root directory:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+   c. Open `.env.local` and replace `your_gemini_api_key_here` with your actual API key:
+   ```
+   GEMINI_API_KEY=AIzaSy...your_actual_key_here
+   ```
+
+3. **Run the app:**
+   ```bash
+   npm run dev
+   ```
+
+   The app will be available at `http://localhost:3000`
+
+### Note on Environment Variables
+
+The Vite configuration automatically loads `GEMINI_API_KEY` from your `.env.local` file and makes it available to the application. The `.env.local` file is gitignored for security, so your API key will not be committed to version control.
 
 ## Deploy to Netlify
 
