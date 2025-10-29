@@ -3,6 +3,7 @@ import { User, FilterType } from '../types';
 import UserCircleIcon from './icons/UserCircleIcon';
 import HamburgerIcon from './icons/HamburgerIcon';
 import XIcon from './icons/XIcon';
+import VerifiedBadge from './VerifiedBadge';
 
 interface HeaderProps {
     user: User | null;
@@ -69,7 +70,10 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, onLogin, onRegister, on
                                     </div>
                                     <div className="flex items-center gap-2 sm:gap-4">
                                         <div className="text-right">
-                                            <div className="text-sm text-slate-600">Welcome, {user.name}</div>
+                                            <div className="text-sm text-slate-600 flex items-center gap-1.5 justify-end">
+                                                Welcome, {user.name}
+                                                <VerifiedBadge status={user.verificationStatus} size="sm" />
+                                            </div>
                                             <div className="text-xs text-slate-500">
                                                 Wallet: <span className="font-semibold text-slate-700">N{user.walletBalance.toLocaleString()}</span>
                                             </div>
@@ -131,7 +135,10 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, onLogin, onRegister, on
                         {user ? (
                             <>
                                 <div className="p-4 mb-4 border-b border-slate-200">
-                                    <h3 className="font-bold text-slate-800">{user.name}</h3>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-bold text-slate-800">{user.name}</h3>
+                                        <VerifiedBadge status={user.verificationStatus} size="sm" />
+                                    </div>
                                     <p className="text-sm text-slate-500">Wallet: N{user.walletBalance.toLocaleString()}</p>
                                 </div>
                                 <button onClick={() => handleMobileLinkClick('MY_REQUESTS')} className="text-left p-3 rounded-md hover:bg-slate-100">My Requests</button>

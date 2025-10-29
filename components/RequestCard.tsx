@@ -6,7 +6,7 @@ import TrashIcon from './icons/TrashIcon';
 import LockIcon from './icons/LockIcon';
 import UsersIcon from './icons/UsersIcon';
 import FlagIcon from './icons/FlagIcon';
-import ShieldCheckIcon from './icons/ShieldCheckIcon';
+import VerifiedBadge from './VerifiedBadge';
 
 interface RequestCardProps {
     request: Request;
@@ -39,9 +39,9 @@ const RequestCard: React.FC<RequestCardProps> = ({ request, isOwner, isUnlocked,
                         <h3 className="text-xl font-bold text-slate-900">{request.title}</h3>
                     </div>
                     <div className="flex items-center gap-4 text-sm text-slate-500 mt-2 flex-wrap">
-                        <span className="flex items-center gap-1">
-                            Posted by {request.userName}
-                            {request.userVerification === 'VERIFIED' && <ShieldCheckIcon />}
+                        <span className="flex items-center gap-1.5">
+                            Posted by <span className="font-medium text-slate-700">{request.userName}</span>
+                            <VerifiedBadge status={request.userVerification} size="sm" />
                         </span>
                         <span className="hidden sm:inline">•</span>
                         <span>{daysAgo > 0 ? timeAgo.format(-daysAgo, 'day') : 'Today'}</span>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Request } from '../types';
+import VerifiedBadge from './VerifiedBadge';
 
 interface ViewRequestModalProps {
     isOpen: boolean;
@@ -20,7 +21,10 @@ const ViewRequestModal: React.FC<ViewRequestModalProps> = ({ isOpen, onClose, re
                     <h2 className="text-2xl font-bold text-slate-900">{request.title}</h2>
                     <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-3xl leading-none">&times;</button>
                 </div>
-                <p className="text-sm text-slate-500 mt-1">Posted by {request.userName}</p>
+                <p className="text-sm text-slate-500 mt-1 flex items-center gap-1.5">
+                    Posted by <span className="font-medium text-slate-700">{request.userName}</span>
+                    <VerifiedBadge status={request.userVerification} size="sm" />
+                </p>
                 
                 <div className="mt-6 bg-slate-50 p-4 rounded-lg border border-slate-200">
                      <h3 className="font-semibold text-slate-800">Contact Information</h3>

@@ -14,6 +14,7 @@ import ConfirmationModal from './components/ConfirmationModal';
 import ToastContainer from './components/ToastContainer';
 import SortControl from './components/SortControl';
 import ProfileModal from './components/ProfileModal';
+import EmailVerificationBanner from './components/EmailVerificationBanner';
 import { authService, userService, requestService, applicationService, transactionService, realtimeService } from './services/supabase.service';
 
 const App: React.FC = () => {
@@ -140,14 +141,52 @@ const App: React.FC = () => {
         }
     };
 
-    const handleAuthSuccess = (loggedInUser: User) => {
+    const handleAuthSuccess = async (loggedInUser: User) => {
         setUser(loggedInUser);
         setCurrentModal(null);
         showToast(`Welcome, ${loggedInUser.name}!`, 'success');
 
-        if (activeRequest) {
+        // If there's an activeRequest with rawInput, user was creating a request when they signed up
+        if (activeRequest?.rawInput && !activeRequest.title) {
+            // Generate the request details now that they're logged in
+            const prompt = activeRequest.rawInput;
+            setIsLoading(true);
+            setError(null);
+            try {
+                if (!process.env.API_KEY) {
+                    throw new Error("API key is missing.");
+                }
+                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+                const response = await ai.models.generateContent({
+                    model: "gemini-2.5-flash",
+                    contents: `Analyze this user request and break it down into a title, a detailed description, a suitable category, and an estimated budget in Nigerian Naira (NGN). The user request is: "${prompt}"`,
+                    config: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: Type.OBJECT,
+                            properties: {
+                                title: { type: Type.STRING },
+                                description: { type: Type.STRING },
+                                category: { type: Type.STRING },
+                                budget: { type: Type.NUMBER }
+                            },
+                            required: ["title", "description", "category", "budget"]
+                        }
+                    }
+                });
+                const parsedResponse = JSON.parse(response.text);
+                setActiveRequest({ ...parsedResponse, rawInput: prompt });
+                setCurrentModal('REQUEST');
+            } catch (err) {
+                setError('Failed to process request with AI. Please try again.');
+                console.error(err);
+            } finally {
+                setIsLoading(false);
+            }
+        } else if (activeRequest) {
             setCurrentModal('REQUEST');
         }
+
         if (pendingUnlockRequest) {
             handleUnlockRequest(pendingUnlockRequest);
             setPendingUnlockRequest(null);
@@ -156,6 +195,14 @@ const App: React.FC = () => {
 
     // --- AI and Request Logic ---
     const generateRequestDetails = useCallback(async (prompt: string) => {
+        // If user is not logged in, show auth modal first
+        if (!user) {
+            setActiveRequest({ rawInput: prompt });
+            setAuthAction('REGISTER');
+            setCurrentModal('AUTH');
+            return;
+        }
+
         setIsLoading(true);
         setError(null);
         try {
@@ -189,7 +236,7 @@ const App: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [user]);
 
     const handlePostRequest = async (requestToPost: Partial<Request>) => {
         if (!user) {
@@ -473,6 +520,9 @@ const App: React.FC = () => {
                 currentFilter={filter}
                 setFilter={setFilter}
             />
+            {user && user.verificationStatus !== 'VERIFIED' && (
+                <EmailVerificationBanner user={user} />
+            )}
             <main className="container mx-auto px-4 py-8 md:py-12">
                 <div className="max-w-3xl mx-auto text-center">
                     <h1 className="text-4xl md:text-5xl font-bold text-slate-900">Have a need? Get it done.</h1>
