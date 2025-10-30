@@ -5,6 +5,7 @@ import { URGENCY_OPTIONS, MOCK_REQUESTS } from './constants';
 import Header from './components/Header';
 import RequestInput from './components/RequestInput';
 import Filter from './components/Filter';
+import SearchBar from './components/SearchBar';
 import RequestList from './components/RequestList';
 import RequestModal from './components/RequestModal';
 import AuthModal from './components/AuthModal';
@@ -21,6 +22,7 @@ const App: React.FC = () => {
     const [requests, setRequests] = useLocalStorage<Request[]>('quickpost-requests', MOCK_REQUESTS);
     const [filter, setFilter] = useState<FilterType>('ALL');
     const [sortBy, setSortBy] = useState<SortType>('NEWEST');
+    const [searchQuery, setSearchQuery] = useState<string>('');
     const [currentModal, setCurrentModal] = useState<ModalType>(null);
     const [authAction, setAuthAction] = useState<AuthAction>('REGISTER');
     
@@ -340,10 +342,18 @@ const App: React.FC = () => {
                             <Filter currentFilter={filter} setFilter={setFilter} />
                         </div>
                     </div>
-                    <RequestList 
-                        requests={requests} 
-                        filter={filter} 
+                    <div className="mb-6">
+                        <SearchBar
+                            value={searchQuery}
+                            onChange={setSearchQuery}
+                            placeholder="Search by title, description, category, or user..."
+                        />
+                    </div>
+                    <RequestList
+                        requests={requests}
+                        filter={filter}
                         sortBy={sortBy}
+                        searchQuery={searchQuery}
                         currentUser={user}
                         unlockedRequestIds={unlockedRequestIds}
                         onEdit={handleEditRequest}
@@ -394,10 +404,14 @@ const App: React.FC = () => {
                 />
             )}
 
-            <ViewRequestModal 
+            <ViewRequestModal
                 isOpen={!!viewingRequest}
                 onClose={() => setViewingRequest(null)}
                 request={viewingRequest}
+                isOwner={viewingRequest ? user?.id === viewingRequest.userId : false}
+                isUnlocked={viewingRequest ? unlockedRequestIds.includes(viewingRequest.id) : false}
+                onUnlock={() => viewingRequest && handleUnlockRequest(viewingRequest)}
+                currentUser={user}
             />
 
             <ConfirmationModal 

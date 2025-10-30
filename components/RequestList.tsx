@@ -6,6 +6,7 @@ interface RequestListProps {
     requests: Request[];
     filter: FilterType;
     sortBy: SortType;
+    searchQuery: string;
     currentUser: User | null;
     unlockedRequestIds: string[];
     onEdit: (request: Request) => void;
@@ -16,7 +17,7 @@ interface RequestListProps {
     onReport: (requestId: string) => void;
 }
 
-const RequestList: React.FC<RequestListProps> = ({ requests, filter, sortBy, currentUser, unlockedRequestIds, onEdit, onDelete, onUnlock, onViewDetails, onApply, onReport }) => {
+const RequestList: React.FC<RequestListProps> = ({ requests, filter, sortBy, searchQuery, currentUser, unlockedRequestIds, onEdit, onDelete, onUnlock, onViewDetails, onApply, onReport }) => {
 
     const processedRequests = useMemo(() => {
         let filtered: Request[] = [];
@@ -32,7 +33,18 @@ const RequestList: React.FC<RequestListProps> = ({ requests, filter, sortBy, cur
             filtered = requests.filter(request => request.urgency === filter);
         }
 
-        // 2. Sorting
+        // 2. Search filtering
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase().trim();
+            filtered = filtered.filter(request =>
+                request.title.toLowerCase().includes(query) ||
+                request.description.toLowerCase().includes(query) ||
+                request.category?.toLowerCase().includes(query) ||
+                request.userName.toLowerCase().includes(query)
+            );
+        }
+
+        // 3. Sorting
         const sorted = [...filtered];
         switch (sortBy) {
             case 'BUDGET_HIGH':
@@ -54,7 +66,7 @@ const RequestList: React.FC<RequestListProps> = ({ requests, filter, sortBy, cur
         }
 
         return sorted;
-    }, [requests, filter, sortBy, currentUser]);
+    }, [requests, filter, sortBy, searchQuery, currentUser]);
 
     return (
         <div className="space-y-4">
