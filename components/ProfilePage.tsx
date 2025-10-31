@@ -7,11 +7,12 @@ interface ProfilePageProps {
     user: User;
     requests: Request[];
     onUpdateProfile: (updatedUser: Partial<User>) => void;
+    onUpdatePassword: (newPassword: string) => Promise<void>;
     onStartVerification: () => void;
     onBack: () => void;
 }
 
-const ProfilePage: React.FC<ProfilePageProps> = ({ user, requests, onUpdateProfile, onStartVerification, onBack }) => {
+const ProfilePage: React.FC<ProfilePageProps> = ({ user, requests, onUpdateProfile, onUpdatePassword, onStartVerification, onBack }) => {
     const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'activity'>('profile');
 
     // Profile form state
@@ -22,7 +23,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, requests, onUpdateProfi
     const [location, setLocation] = useState(user.location || '');
 
     // Password form state
-    const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -43,17 +43,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, requests, onUpdateProfi
         setTimeout(() => setSuccess(''), 3000);
     };
 
-    const handleChangePassword = () => {
+    const handleChangePassword = async () => {
         setError('');
         setSuccess('');
 
-        if (!currentPassword || !newPassword || !confirmPassword) {
-            setError('All password fields are required.');
-            return;
-        }
-
-        if (currentPassword !== user.password) {
-            setError('Current password is incorrect.');
+        if (!newPassword || !confirmPassword) {
+            setError('Both password fields are required.');
             return;
         }
 
@@ -67,12 +62,15 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, requests, onUpdateProfi
             return;
         }
 
-        onUpdateProfile({ password: newPassword });
-        setSuccess('Password changed successfully!');
-        setCurrentPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
-        setTimeout(() => setSuccess(''), 3000);
+        try {
+            await onUpdatePassword(newPassword);
+            setSuccess('Password changed successfully!');
+            setNewPassword('');
+            setConfirmPassword('');
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err: any) {
+            setError(err.message || 'Failed to change password.');
+        }
     };
 
     const getVerificationBadge = () => {
@@ -267,16 +265,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, requests, onUpdateProfi
                                     <p className="text-sm text-slate-600 mb-6">Keep your account secure by using a strong password.</p>
 
                                     <div className="space-y-4 max-w-md">
-                                        <div>
-                                            <label className="block font-semibold text-slate-700 mb-2">Current Password</label>
-                                            <input
-                                                type="password"
-                                                value={currentPassword}
-                                                onChange={e => setCurrentPassword(e.target.value)}
-                                                className="w-full p-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-800"
-                                                placeholder="Enter current password"
-                                            />
-                                        </div>
                                         <div>
                                             <label className="block font-semibold text-slate-700 mb-2">New Password</label>
                                             <input

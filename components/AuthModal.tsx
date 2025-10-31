@@ -1,48 +1,50 @@
 import React, { useState } from 'react';
-import { User, AuthAction, VerificationStatus } from '../types';
+import { AuthAction } from '../types';
 
 interface AuthModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onAuthSuccess: (user: User) => void;
+    onAuthSuccess: () => void;
     initialAction: AuthAction;
+    signUp: (email: string, password: string, name: string) => Promise<any>;
+    signIn: (email: string, password: string) => Promise<any>;
 }
 
-const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuccess, initialAction }) => {
+const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuccess, initialAction, signUp, signIn }) => {
     const [action, setAction] = useState<AuthAction>(initialAction);
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
 
     if (!isOpen) return null;
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setLoading(true);
 
-        if (action === 'REGISTER' && !name) {
-            setError('Name is required for registration.');
-            return;
+        try {
+            if (action === 'REGISTER') {
+                if (!name) {
+                    setError('Name is required for registration.');
+                    setLoading(false);
+                    return;
+                }
+                await signUp(email, password, name);
+                setError('');
+                onAuthSuccess();
+            } else {
+                await signIn(email, password);
+                setError('');
+                onAuthSuccess();
+            }
+        } catch (err: any) {
+            setError(err.message || 'Authentication failed. Please try again.');
+        } finally {
+            setLoading(false);
         }
-
-        if (!email || !password) {
-            setError('Email and password are required.');
-            return;
-        }
-
-        // Mock authentication logic
-        const mockUser: User = {
-            id: `user-${Date.now()}`,
-            name: action === 'REGISTER' ? name : 'Mock User',
-            email: email,
-            password: password,
-            walletBalance: action === 'REGISTER' ? 1000 : 5000,
-            verificationStatus: 'NOT_VERIFIED',
-            joinedDate: new Date().toISOString(),
-        };
-
-        onAuthSuccess(mockUser);
     };
 
     const toggleAction = () => {
@@ -64,28 +66,50 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuccess, i
                     {action === 'REGISTER' && (
                          <div>
                             <label className="font-semibold text-slate-700">Name</label>
-                            <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full mt-1 p-2 border border-slate-300 rounded-md"/>
+                            <input
+                                type="text"
+                                value={name}
+                                onChange={e => setName(e.target.value)}
+                                className="w-full mt-1 p-2 border border-slate-300 rounded-md"
+                                disabled={loading}
+                            />
                         </div>
                     )}
                     <div>
                         <label className="font-semibold text-slate-700">Email</label>
-                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full mt-1 p-2 border border-slate-300 rounded-md"/>
+                        <input
+                            type="email"
+                            value={email}
+                            onChange={e => setEmail(e.target.value)}
+                            className="w-full mt-1 p-2 border border-slate-300 rounded-md"
+                            disabled={loading}
+                        />
                     </div>
                     <div>
                         <label className="font-semibold text-slate-700">Password</label>
-                        <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full mt-1 p-2 border border-slate-300 rounded-md"/>
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            className="w-full mt-1 p-2 border border-slate-300 rounded-md"
+                            disabled={loading}
+                        />
                     </div>
 
                     {error && <p className="text-red-500 text-sm">{error}</p>}
 
-                    <button type="submit" className="w-full py-3 mt-4 text-white bg-slate-800 rounded-md font-semibold hover:bg-slate-900 transition-colors">
-                        {action === 'LOGIN' ? 'Log In' : 'Register'}
+                    <button
+                        type="submit"
+                        className="w-full py-3 mt-4 text-white bg-slate-800 rounded-md font-semibold hover:bg-slate-900 transition-colors disabled:bg-slate-400"
+                        disabled={loading}
+                    >
+                        {loading ? 'Please wait...' : (action === 'LOGIN' ? 'Log In' : 'Register')}
                     </button>
                 </form>
 
                 <p className="text-center text-sm text-slate-500 mt-6">
                     {action === 'LOGIN' ? "Don't have an account?" : "Already have an account?"}
-                    <button onClick={toggleAction} className="font-semibold text-slate-800 hover:underline ml-1">
+                    <button onClick={toggleAction} className="font-semibold text-slate-800 hover:underline ml-1" disabled={loading}>
                         {action === 'LOGIN' ? 'Sign Up' : 'Log In'}
                     </button>
                 </p>

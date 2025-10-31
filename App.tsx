@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { User, Request, UrgencyLevel, ModalType, FilterType, AuthAction, Toast, SortType, VerificationStatus } from './types';
-import { URGENCY_OPTIONS, MOCK_REQUESTS } from './constants';
+import { URGENCY_OPTIONS } from './constants';
 import Header from './components/Header';
 import RequestInput from './components/RequestInput';
 import Filter from './components/Filter';
@@ -13,30 +13,65 @@ import WalletModal from './components/WalletModal';
 import ViewRequestModal from './components/ViewRequestModal';
 import ConfirmationModal from './components/ConfirmationModal';
 import ToastContainer from './components/ToastContainer';
-import useLocalStorage from './hooks/useLocalStorage';
 import SortControl from './components/SortControl';
 import ProfilePage from './components/ProfilePage';
+import { useSupabaseAuth } from './hooks/useSupabaseAuth';
+import {
+    getAllRequests,
+    createRequest as dbCreateRequest,
+    updateRequest as dbUpdateRequest,
+    deleteRequest as dbDeleteRequest,
+    applyToRequest as dbApplyToRequest,
+    unlockRequest as dbUnlockRequest,
+    getUnlockedRequests,
+    updateUserProfile,
+    updateWalletBalance,
+} from './lib/database';
 
 const App: React.FC = () => {
-    const [user, setUser] = useLocalStorage<User | null>('quickpost-user', null);
-    const [requests, setRequests] = useLocalStorage<Request[]>('quickpost-requests', MOCK_REQUESTS);
+    const { user, loading: authLoading, signUp, signIn, signOut, updatePassword, setUser } = useSupabaseAuth();
+    const [requests, setRequests] = useState<Request[]>([]);
+    const [requestsLoading, setRequestsLoading] = useState(true);
     const [filter, setFilter] = useState<FilterType>('ALL');
     const [sortBy, setSortBy] = useState<SortType>('NEWEST');
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [currentPage, setCurrentPage] = useState<'home' | 'profile'>('home');
     const [currentModal, setCurrentModal] = useState<ModalType>(null);
     const [authAction, setAuthAction] = useState<AuthAction>('REGISTER');
-    
+
     const [activeRequest, setActiveRequest] = useState<Partial<Request> | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const [unlockedRequestIds, setUnlockedRequestIds] = useLocalStorage<string[]>('quickpost-unlocked-ids', []);
+    const [unlockedRequestIds, setUnlockedRequestIds] = useState<string[]>([]);
     const [pendingUnlockRequest, setPendingUnlockRequest] = useState<Request | null>(null);
     const [viewingRequest, setViewingRequest] = useState<Request | null>(null);
-    
+
     const [toasts, setToasts] = useState<Toast[]>([]);
     const [confirmation, setConfirmation] = useState<{ title: string; message: string; onConfirm: () => void; } | null>(null);
+
+    // Load requests and unlocked IDs from Supabase
+    useEffect(() => {
+        const loadData = async () => {
+            try {
+                const [allRequests, unlockedIds] = await Promise.all([
+                    getAllRequests(),
+                    user ? getUnlockedRequests(user.id) : Promise.resolve([])
+                ]);
+                setRequests(allRequests);
+                setUnlockedRequestIds(unlockedIds);
+            } catch (err) {
+                console.error('Error loading data:', err);
+                showToast('Failed to load requests. Please refresh the page.', 'error');
+            } finally {
+                setRequestsLoading(false);
+            }
+        };
+
+        if (!authLoading) {
+            loadData();
+        }
+    }, [authLoading, user]);
 
     // --- Toast and Confirmation Helpers ---
     const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -49,16 +84,22 @@ const App: React.FC = () => {
     };
 
     // --- Auth Handlers ---
-    const handleLogout = () => {
-        setUser(null);
-        setFilter('ALL'); // Reset filter on logout
-        showToast('You have been logged out.');
+    const handleLogout = async () => {
+        try {
+            await signOut();
+            setFilter('ALL');
+            showToast('You have been logged out.');
+        } catch (err) {
+            console.error('Error logging out:', err);
+            showToast('Failed to log out. Please try again.', 'error');
+        }
     };
 
-    const handleAuthSuccess = (loggedInUser: User) => {
-        setUser(loggedInUser);
+    const handleAuthSuccess = () => {
         setCurrentModal(null);
-        showToast(`Welcome, ${loggedInUser.name}!`, 'success');
+        if (user) {
+            showToast(`Welcome, ${user.name}!`, 'success');
+        }
         if (activeRequest) {
             setCurrentModal('REQUEST');
         }
@@ -103,13 +144,13 @@ const App: React.FC = () => {
         }
     }, []);
 
-    const handlePostRequest = (requestToPost: Partial<Request>) => {
+    const handlePostRequest = async (requestToPost: Partial<Request>) => {
         if (!user) {
             setAuthAction('REGISTER');
             setCurrentModal('AUTH');
             return;
         }
-        
+
         const urgencyOption = URGENCY_OPTIONS.find(opt => opt.level === requestToPost.urgency);
         const cost = urgencyOption ? urgencyOption.cost : 0;
         const isUpdate = !!requestToPost.id;
@@ -120,27 +161,27 @@ const App: React.FC = () => {
             const originalCost = URGENCY_OPTIONS.find(opt => opt.level === originalRequest?.urgency)?.cost || 0;
             costToCharge = cost - originalCost;
         }
-        
-        const performPost = () => {
-             if (isUpdate) {
-                setRequests(prev => prev.map(r => r.id === requestToPost.id ? { ...r, ...requestToPost } as Request : r));
-                showToast('Request updated successfully!', 'success');
-            } else {
-                const newRequest: Request = {
-                    id: Date.now().toString(),
-                    userId: user.id,
-                    userName: user.name,
-                    userVerification: user.verificationStatus,
-                    createdAt: new Date().toISOString(),
-                    applicants: [],
-                    ...requestToPost,
-                    urgency: requestToPost.urgency || UrgencyLevel.GENERAL,
-                } as Request;
-                setRequests(prev => [newRequest, ...prev]);
-                showToast('Request posted successfully!', 'success');
+
+        const performPost = async () => {
+            try {
+                if (isUpdate) {
+                    await dbUpdateRequest(requestToPost.id!, requestToPost);
+                    setRequests(prev => prev.map(r => r.id === requestToPost.id ? { ...r, ...requestToPost } as Request : r));
+                    showToast('Request updated successfully!', 'success');
+                } else {
+                    const newRequest = await dbCreateRequest(user.id, {
+                        ...requestToPost,
+                        urgency: requestToPost.urgency || UrgencyLevel.GENERAL,
+                    });
+                    setRequests(prev => [newRequest, ...prev]);
+                    showToast('Request posted successfully!', 'success');
+                }
+                setCurrentModal(null);
+                setActiveRequest(null);
+            } catch (err) {
+                console.error('Error posting request:', err);
+                showToast('Failed to post request. Please try again.', 'error');
             }
-            setCurrentModal(null);
-            setActiveRequest(null);
         };
 
         if (costToCharge > 0) {
@@ -152,13 +193,20 @@ const App: React.FC = () => {
             setConfirmation({
                 title: 'Confirm Payment',
                 message: `This action will deduct N${costToCharge.toLocaleString()} from your wallet. Proceed?`,
-                onConfirm: () => {
-                    setUser(prevUser => prevUser ? { ...prevUser, walletBalance: prevUser.walletBalance - costToCharge } : null);
-                    performPost();
+                onConfirm: async () => {
+                    try {
+                        const newBalance = user.walletBalance - costToCharge;
+                        await updateWalletBalance(user.id, newBalance);
+                        setUser({ ...user, walletBalance: newBalance });
+                        await performPost();
+                    } catch (err) {
+                        console.error('Error updating wallet:', err);
+                        showToast('Payment failed. Please try again.', 'error');
+                    }
                 }
             });
         } else {
-            performPost();
+            await performPost();
         }
     };
     
@@ -171,9 +219,15 @@ const App: React.FC = () => {
         setConfirmation({
             title: 'Delete Request',
             message: 'Are you sure you want to permanently delete this request?',
-            onConfirm: () => {
-                setRequests(prev => prev.filter(r => r.id !== requestId));
-                showToast('Request deleted.', 'success');
+            onConfirm: async () => {
+                try {
+                    await dbDeleteRequest(requestId);
+                    setRequests(prev => prev.filter(r => r.id !== requestId));
+                    showToast('Request deleted.', 'success');
+                } catch (err) {
+                    console.error('Error deleting request:', err);
+                    showToast('Failed to delete request. Please try again.', 'error');
+                }
             }
         });
     };
@@ -195,51 +249,67 @@ const App: React.FC = () => {
     const openProfile = () => setCurrentPage('profile');
 
     // --- Profile Management ---
-    const handleUpdateProfile = (updatedDetails: Partial<User>) => {
+    const handleUpdateProfile = async (updatedDetails: Partial<User>) => {
         if (!user) return;
-        const updatedUser = { ...user, ...updatedDetails };
-        setUser(updatedUser);
+        try {
+            await updateUserProfile(user.id, updatedDetails);
+            const updatedUser = { ...user, ...updatedDetails };
+            setUser(updatedUser);
 
-        setRequests(prevRequests =>
-            prevRequests.map(req => {
-                const newReq = req.userId === user.id ? { ...req, userName: updatedUser.name } : { ...req };
-                const newApplicants = newReq.applicants.map(app =>
-                    app.userId === user.id ? { ...app, userName: updatedUser.name } : app
-                );
-                return { ...newReq, applicants: newApplicants };
-            })
-        );
-        showToast('Profile updated successfully!', 'success');
+            // Update requests with new user info
+            setRequests(prevRequests =>
+                prevRequests.map(req => {
+                    const newReq = req.userId === user.id ? { ...req, userName: updatedUser.name } : { ...req };
+                    const newApplicants = newReq.applicants.map(app =>
+                        app.userId === user.id ? { ...app, userName: updatedUser.name } : app
+                    );
+                    return { ...newReq, applicants: newApplicants };
+                })
+            );
+            showToast('Profile updated successfully!', 'success');
+        } catch (err) {
+            console.error('Error updating profile:', err);
+            showToast('Failed to update profile. Please try again.', 'error');
+        }
     };
 
-    const handleStartVerification = () => {
+    const handleStartVerification = async () => {
         if (!user) return;
         setUser({ ...user, verificationStatus: 'PENDING' });
         showToast('Verification process started. This will take a moment.', 'info');
 
-        setTimeout(() => {
-            setUser(prevUser => {
-                if (!prevUser) return null;
-                const updatedUser = { ...prevUser, verificationStatus: 'VERIFIED' as VerificationStatus };
-                
+        setTimeout(async () => {
+            try {
+                await updateUserProfile(user.id, { verificationStatus: 'VERIFIED' });
+                const updatedUser = { ...user, verificationStatus: 'VERIFIED' as VerificationStatus };
+                setUser(updatedUser);
+
                 // Update verification status on existing posts
-                setRequests(prevReqs => prevReqs.map(req => 
+                setRequests(prevReqs => prevReqs.map(req =>
                     req.userId === updatedUser.id ? { ...req, userVerification: 'VERIFIED' } : req
                 ));
 
                 showToast('Your identity has been successfully verified!', 'success');
-                return updatedUser;
-            });
+            } catch (err) {
+                console.error('Error updating verification:', err);
+                showToast('Verification failed. Please try again.', 'error');
+            }
         }, 3000);
     };
 
 
     // --- Wallet and Payment Handlers ---
-    const handleAddFunds = (amount: number) => {
-        if (user) {
-            setUser({ ...user, walletBalance: user.walletBalance + amount });
+    const handleAddFunds = async (amount: number) => {
+        if (!user) return;
+        try {
+            const newBalance = user.walletBalance + amount;
+            await updateWalletBalance(user.id, newBalance);
+            setUser({ ...user, walletBalance: newBalance });
             showToast(`Successfully added N${amount.toLocaleString()} to your wallet.`, 'success');
             setCurrentModal(null);
+        } catch (err) {
+            console.error('Error adding funds:', err);
+            showToast('Failed to add funds. Please try again.', 'error');
         }
     };
 
@@ -251,21 +321,29 @@ const App: React.FC = () => {
         }
 
         const cost = Math.min(requestToUnlock.budget * 0.001, 250000);
-        
+
         if (user.walletBalance < cost) {
             showToast(`You need N${cost.toFixed(2)} to view this. Please add funds.`, 'error');
             openWallet();
             return;
         }
-        
+
         setConfirmation({
             title: 'Unlock Details',
             message: `This will deduct N${cost.toFixed(2)} from your wallet. Proceed?`,
-            onConfirm: () => {
-                setUser({ ...user, walletBalance: user.walletBalance - cost });
-                setUnlockedRequestIds(prev => [...new Set([...prev, requestToUnlock.id])]);
-                setViewingRequest(requestToUnlock);
-                showToast('Details unlocked!', 'success');
+            onConfirm: async () => {
+                try {
+                    const newBalance = user.walletBalance - cost;
+                    await updateWalletBalance(user.id, newBalance);
+                    await dbUnlockRequest(user.id, requestToUnlock.id);
+                    setUser({ ...user, walletBalance: newBalance });
+                    setUnlockedRequestIds(prev => [...new Set([...prev, requestToUnlock.id])]);
+                    setViewingRequest(requestToUnlock);
+                    showToast('Details unlocked!', 'success');
+                } catch (err) {
+                    console.error('Error unlocking request:', err);
+                    showToast('Failed to unlock request. Please try again.', 'error');
+                }
             }
         });
     };
@@ -274,25 +352,24 @@ const App: React.FC = () => {
         setViewingRequest(request);
     };
 
-    const handleApplyToRequest = (requestId: string) => {
+    const handleApplyToRequest = async (requestId: string) => {
         if (!user) {
             showToast('Please log in to apply for a request.', 'info');
             openLogin();
             return;
         }
-        
-        setRequests(prevRequests => {
-            const newRequests = [...prevRequests];
-            const requestIndex = newRequests.findIndex(r => r.id === requestId);
-            if (requestIndex === -1) return prevRequests;
 
-            const request = newRequests[requestIndex];
-            const hasApplied = request.applicants.some(app => app.userId === user.id);
+        const request = requests.find(r => r.id === requestId);
+        if (!request) return;
 
-            if (hasApplied) {
-                showToast("You have already applied to this request.", 'info');
-                return prevRequests;
-            }
+        const hasApplied = request.applicants.some(app => app.userId === user.id);
+        if (hasApplied) {
+            showToast("You have already applied to this request.", 'info');
+            return;
+        }
+
+        try {
+            await dbApplyToRequest(user.id, requestId);
 
             const newApplicant = {
                 userId: user.id,
@@ -300,16 +377,33 @@ const App: React.FC = () => {
                 appliedAt: new Date().toISOString()
             };
 
-            newRequests[requestIndex] = {
-                ...request,
-                applicants: [...request.applicants, newApplicant]
-            };
-            
+            setRequests(prevRequests =>
+                prevRequests.map(r =>
+                    r.id === requestId
+                        ? { ...r, applicants: [...r.applicants, newApplicant] }
+                        : r
+                )
+            );
+
             showToast("Your application has been sent!", 'success');
-            return newRequests;
-        });
+        } catch (err) {
+            console.error('Error applying to request:', err);
+            showToast('Failed to apply. Please try again.', 'error');
+        }
     };
 
+
+    // Show loading state while auth is initializing
+    if (authLoading) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto mb-4"></div>
+                    <p className="text-slate-600">Loading...</p>
+                </div>
+            </div>
+        );
+    }
 
     // Show profile page if on profile route
     if (currentPage === 'profile' && user) {
@@ -318,6 +412,7 @@ const App: React.FC = () => {
                 user={user}
                 requests={requests}
                 onUpdateProfile={handleUpdateProfile}
+                onUpdatePassword={updatePassword}
                 onStartVerification={handleStartVerification}
                 onBack={() => setCurrentPage('home')}
             />
@@ -395,6 +490,8 @@ const App: React.FC = () => {
                     onClose={() => setCurrentModal(null)}
                     onAuthSuccess={handleAuthSuccess}
                     initialAction={authAction}
+                    signUp={signUp}
+                    signIn={signIn}
                 />
             )}
 
