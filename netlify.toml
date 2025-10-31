@@ -1,133 +1,29 @@
 # Netlify Configuration for QuickPost
-# This ensures proper SPA routing and build configuration
+# Simplified and tested configuration
 
 [build]
-  # Build command
   command = "npm run build"
-
-  # Output directory (Vite default)
   publish = "dist"
 
-  # Build environment
-  [build.environment]
-    NODE_VERSION = "20"
-    NPM_FLAGS = "--legacy-peer-deps"
+[build.environment]
+  NODE_VERSION = "20"
 
-# SPA Routing - Critical for React apps
-# Redirects all routes to index.html for client-side routing
+# SPA Routing - Redirect all routes to index.html
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
-  force = false
 
-  # Don't redirect API calls or static files
-  conditions = {Role = ["*"]}
-
-# Headers for security and performance
+# Headers for security and CDN compatibility
 [[headers]]
   for = "/*"
   [headers.values]
-    # Security headers
-    X-Frame-Options = "DENY"
+    X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
     X-XSS-Protection = "1; mode=block"
-    Referrer-Policy = "strict-origin-when-cross-origin"
 
-    # Performance - cache control
-    Cache-Control = "public, max-age=0, must-revalidate"
-
-    # Content Security Policy - Allow external resources
-    Content-Security-Policy = """
-      default-src 'self';
-      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://aistudiocdn.com https://generativelanguage.googleapis.com;
-      style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;
-      img-src 'self' data: https:;
-      font-src 'self' data:;
-      connect-src 'self' https://generativelanguage.googleapis.com https://aistudiocdn.com;
-      frame-ancestors 'none';
-    """
-
-# Cache static assets aggressively
+# Cache static assets
 [[headers]]
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
-
-# Cache JavaScript modules
-[[headers]]
-  for = "/*.js"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-    Content-Type = "application/javascript; charset=utf-8"
-
-# Cache CSS files
-[[headers]]
-  for = "/*.css"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-
-# Ensure proper MIME types for ES modules
-[[headers]]
-  for = "/*.mjs"
-  [headers.values]
-    Content-Type = "application/javascript; charset=utf-8"
-
-# SVG files
-[[headers]]
-  for = "/*.svg"
-  [headers.values]
-    Content-Type = "image/svg+xml; charset=utf-8"
-    Cache-Control = "public, max-age=31536000, immutable"
-
-# Development context (branch deploys)
-[context.branch-deploy]
-  command = "npm run build"
-
-[context.branch-deploy.environment]
-  NODE_ENV = "development"
-
-# Production context
-[context.production]
-  command = "npm run build"
-
-[context.production.environment]
-  NODE_ENV = "production"
-
-# Deploy previews context
-[context.deploy-preview]
-  command = "npm run build"
-
-# Functions configuration (if you add serverless functions later)
-[functions]
-  directory = "netlify/functions"
-  node_bundler = "esbuild"
-
-# Plugin configuration (optional but recommended)
-[[plugins]]
-  package = "@netlify/plugin-lighthouse"
-
-  # Lighthouse CI for performance monitoring
-  [plugins.inputs.thresholds]
-    performance = 0.9
-    accessibility = 0.9
-    best-practices = 0.9
-    seo = 0.9
-
-# Build error handling
-[build.processing]
-  skip_processing = false
-
-[build.processing.css]
-  bundle = true
-  minify = true
-
-[build.processing.js]
-  bundle = true
-  minify = true
-
-[build.processing.html]
-  pretty_urls = true
-
-[build.processing.images]
-  compress = true
