@@ -37,8 +37,13 @@ export interface User {
     id: string;
     name: string;
     email: string;
+    password: string;
     walletBalance: number;
     verificationStatus: VerificationStatus;
+    phone?: string;
+    bio?: string;
+    location?: string;
+    joinedDate?: string;
 }
 
 export interface UrgencyOption {

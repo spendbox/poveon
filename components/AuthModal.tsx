@@ -36,10 +36,12 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuccess, i
             id: `user-${Date.now()}`,
             name: action === 'REGISTER' ? name : 'Mock User',
             email: email,
+            password: password,
             walletBalance: action === 'REGISTER' ? 1000 : 5000,
             verificationStatus: 'NOT_VERIFIED',
+            joinedDate: new Date().toISOString(),
         };
-        
+
         onAuthSuccess(mockUser);
     };
 

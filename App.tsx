@@ -15,7 +15,7 @@ import ConfirmationModal from './components/ConfirmationModal';
 import ToastContainer from './components/ToastContainer';
 import useLocalStorage from './hooks/useLocalStorage';
 import SortControl from './components/SortControl';
-import ProfileModal from './components/ProfileModal';
+import ProfilePage from './components/ProfilePage';
 
 const App: React.FC = () => {
     const [user, setUser] = useLocalStorage<User | null>('quickpost-user', null);
@@ -23,6 +23,7 @@ const App: React.FC = () => {
     const [filter, setFilter] = useState<FilterType>('ALL');
     const [sortBy, setSortBy] = useState<SortType>('NEWEST');
     const [searchQuery, setSearchQuery] = useState<string>('');
+    const [currentPage, setCurrentPage] = useState<'home' | 'profile'>('home');
     const [currentModal, setCurrentModal] = useState<ModalType>(null);
     const [authAction, setAuthAction] = useState<AuthAction>('REGISTER');
     
@@ -191,7 +192,7 @@ const App: React.FC = () => {
     const openLogin = () => { setAuthAction('LOGIN'); setCurrentModal('AUTH'); };
     const openRegister = () => { setAuthAction('REGISTER'); setCurrentModal('AUTH'); };
     const openWallet = () => setCurrentModal('WALLET');
-    const openProfile = () => setCurrentModal('PROFILE');
+    const openProfile = () => setCurrentPage('profile');
 
     // --- Profile Management ---
     const handleUpdateProfile = (updatedDetails: Partial<User>) => {
@@ -199,16 +200,15 @@ const App: React.FC = () => {
         const updatedUser = { ...user, ...updatedDetails };
         setUser(updatedUser);
 
-        setRequests(prevRequests => 
+        setRequests(prevRequests =>
             prevRequests.map(req => {
                 const newReq = req.userId === user.id ? { ...req, userName: updatedUser.name } : { ...req };
-                const newApplicants = newReq.applicants.map(app => 
+                const newApplicants = newReq.applicants.map(app =>
                     app.userId === user.id ? { ...app, userName: updatedUser.name } : app
                 );
                 return { ...newReq, applicants: newApplicants };
             })
         );
-        setCurrentModal(null);
         showToast('Profile updated successfully!', 'success');
     };
 
@@ -311,14 +311,27 @@ const App: React.FC = () => {
     };
 
 
+    // Show profile page if on profile route
+    if (currentPage === 'profile' && user) {
+        return (
+            <ProfilePage
+                user={user}
+                requests={requests}
+                onUpdateProfile={handleUpdateProfile}
+                onStartVerification={handleStartVerification}
+                onBack={() => setCurrentPage('home')}
+            />
+        );
+    }
+
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
-            <Header 
-                user={user} 
-                onLogout={handleLogout} 
-                onLogin={openLogin} 
-                onRegister={openRegister} 
-                onOpenWallet={openWallet} 
+            <Header
+                user={user}
+                onLogout={handleLogout}
+                onLogin={openLogin}
+                onRegister={openRegister}
+                onOpenWallet={openWallet}
                 onOpenProfile={openProfile}
                 currentFilter={filter}
                 setFilter={setFilter}
@@ -386,21 +399,11 @@ const App: React.FC = () => {
             )}
 
             {currentModal === 'WALLET' && user && (
-                <WalletModal 
+                <WalletModal
                     isOpen={true}
                     onClose={() => setCurrentModal(null)}
                     onAddFunds={handleAddFunds}
                     currentUser={user}
-                />
-            )}
-
-             {currentModal === 'PROFILE' && user && (
-                <ProfileModal 
-                    isOpen={true}
-                    onClose={() => setCurrentModal(null)}
-                    onSave={handleUpdateProfile}
-                    currentUser={user}
-                    onStartVerification={handleStartVerification}
                 />
             )}
 
