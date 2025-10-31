@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Request, UrgencyOption, UrgencyLevel } from '../types';
+import { Request, UrgencyOption, UrgencyLevel, User } from '../types';
 
 interface RequestModalProps {
     isOpen: boolean;
@@ -7,9 +7,10 @@ interface RequestModalProps {
     onSave: (request: Partial<Request>) => void;
     requestData: Partial<Request>;
     urgencyOptions: UrgencyOption[];
+    currentUser: User | null;
 }
 
-const RequestModal: React.FC<RequestModalProps> = ({ isOpen, onClose, onSave, requestData, urgencyOptions }) => {
+const RequestModal: React.FC<RequestModalProps> = ({ isOpen, onClose, onSave, requestData, urgencyOptions, currentUser }) => {
     const [request, setRequest] = useState(requestData);
     const [selectedUrgency, setSelectedUrgency] = useState<UrgencyLevel>(requestData.urgency || UrgencyLevel.GENERAL);
     const [error, setError] = useState('');
@@ -76,20 +77,30 @@ const RequestModal: React.FC<RequestModalProps> = ({ isOpen, onClose, onSave, re
                     </div>
                 </div>
 
-                <div className="mt-8">
-                    <h3 className="font-semibold text-slate-700 mb-2">Urgency Level</h3>
-                     <div className="grid sm:grid-cols-3 gap-3">
-                        {urgencyOptions.map(option => (
-                            <div key={option.level} onClick={() => setSelectedUrgency(option.level)}
-                                className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${selectedUrgency === option.level ? 'border-slate-800 bg-slate-50' : 'border-slate-200 hover:border-slate-400'}`}>
-                                <h4 className="font-bold">{option.label}</h4>
-                                <p className="text-sm text-slate-500 mt-1">{option.description}</p>
-                                <p className="text-lg font-semibold mt-2">N{option.cost.toLocaleString()}</p>
-                            </div>
-                        ))}
+                {currentUser && (
+                    <div className="mt-8">
+                        <h3 className="font-semibold text-slate-700 mb-2">Urgency Level</h3>
+                        <div className="grid sm:grid-cols-3 gap-3">
+                            {urgencyOptions.map(option => (
+                                <div key={option.level} onClick={() => setSelectedUrgency(option.level)}
+                                    className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${selectedUrgency === option.level ? 'border-slate-800 bg-slate-50' : 'border-slate-200 hover:border-slate-400'}`}>
+                                    <h4 className="font-bold">{option.label}</h4>
+                                    <p className="text-sm text-slate-500 mt-1">{option.description}</p>
+                                    <p className="text-lg font-semibold mt-2">N{option.cost.toLocaleString()}</p>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                </div>
-                
+                )}
+
+                {!currentUser && (
+                    <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-sm text-blue-800">
+                            <span className="font-semibold">Sign in to post this request.</span> You'll be able to select urgency level and payment options after logging in.
+                        </p>
+                    </div>
+                )}
+
                 {error && <p className="text-red-500 text-sm mt-4 text-center">{error}</p>}
 
                 <div className="flex justify-end gap-3 mt-8">

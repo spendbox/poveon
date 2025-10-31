@@ -481,6 +481,7 @@ const App: React.FC = () => {
                     requestData={activeRequest}
                     onSave={handlePostRequest}
                     urgencyOptions={URGENCY_OPTIONS}
+                    currentUser={user}
                 />
             )}
             

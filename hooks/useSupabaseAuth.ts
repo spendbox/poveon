@@ -38,10 +38,19 @@ export function useSupabaseAuth() {
         data: {
           name,
         },
+        emailRedirectTo: undefined, // Disable email confirmation redirect
       },
     });
 
     if (error) throw error;
+
+    // If email confirmation is disabled, user will be immediately signed in
+    // Load user data right away
+    if (data.session) {
+      const userData = await getCurrentUser();
+      setUser(userData);
+    }
+
     return data;
   };
 
@@ -52,6 +61,13 @@ export function useSupabaseAuth() {
     });
 
     if (error) throw error;
+
+    // Load user data immediately after sign in
+    if (data.session) {
+      const userData = await getCurrentUser();
+      setUser(userData);
+    }
+
     return data;
   };
 
